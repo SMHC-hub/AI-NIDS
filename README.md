@@ -8,177 +8,110 @@ The project uses the CIC-IDS2017 dataset and focuses on making intrusion detecti
 
 ## Key Features
 
-- **Network intrusion detection:** Classifies network flows as benign or malicious using a Random Forest model.
-
-- **Explainable predictions:** Uses SHAP to identify which network features influence individual predictions.
-
-- **AI-assisted SOC reports:** Uses Groq to generate security analysis based on model predictions and selected SHAP evidence.
-
-- **Interactive dashboard:** Provides a Streamlit interface for exploring predictions, confidence scores, and explanations.
-
-- **Automated testing:** Includes seven tests covering model artifacts, predictions, SHAP explanations, and Groq failure handling.
-
-- **Graceful API failure handling:** Local SHAP explanations remain available when Groq cannot be accessed.
+- **Network intrusion detection:** Classifies network flows as benign or malicious using an optimized Random Forest model.
+- **Explainable predictions:** Uses SHAP to extract influential flow features for local interpretability.
+- **AI-assisted SOC reports:** Generates structured security analysis using Groq based on model predictions and SHAP evidence.
+- **Interactive dashboard:** Streamlit interface for exploratory flow triage, feature waterfalls, and confidence scoring.
+- **Automated testing:** 11 comprehensive automated tests covering model artifacts, predictions, SHAP, API fallbacks, and day-isolation invariants.
+- **Graceful degradation:** Local SHAP explanations and triage remain fully operational when Groq API keys are absent or unavailable.
 
 ## System Architecture
 
-```text
+The AI-NIDS architecture combines high-throughput data processing, tree-based machine learning, local model interpretability, and LLM-assisted incident analysis:
 
-CIC-IDS2017 CSV Files
+```mermaid
+flowchart TD
+    subgraph Pipeline ["1. Data Processing Pipeline"]
+        A["CIC-IDS2017 Traffic<br/>8 CSV Files (2.8M Flows)"] --> B["Data Cleaning & Deduplication<br/>Drop Duplicates & Non-Finite Values"]
+        B --> C["Stratified Split (80/20)<br/>Train: 2,016,638 | Test: 504,160"]
+        C --> D["Feature Selection & Scaling<br/>70 Features (StandardScaler)"]
+    end
 
-          |
+    subgraph Inference ["2. Intrusion Detection Model"]
+        D --> E["Random Forest Classifier<br/>80 Trees, Max Depth 16, Balanced"]
+        E --> F{"Binary Prediction"}
+        F -->|"Class 0"| G["Benign Traffic"]
+        F -->|"Class 1"| H["Malicious Threat"]
+    end
 
-          v
-
-Data Cleaning and Preprocessing
-
-          |
-
-          v
-
-Train/Test Split (80/20)
-
-          |
-
-          v
-
-Feature Selection and StandardScaler
-
-          |
-
-          v
-
-Random Forest Intrusion Detection
-
-          |
-
-          v
-
-Benign / Malicious Prediction
-
-          |
-
-          v
-
-SHAP Feature Explanation
-
-          |
-
-          +--------------------+
-
-          |                    |
-
-          v                    v
-
-Streamlit Dashboard     Groq SOC Analysis
-
-          |                    |
-
-          +--------------------+
-
-          |
-
-          v
-
-Interpretable Security Results
-
+    subgraph Explainability ["3. Interpretability & Reporting"]
+        E --> I["TreeSHAP Engine<br/>Local Feature Contributions"]
+        I --> J["Explainability Evidence<br/>Top-K Feature Contributions"]
+        J --> K["Streamlit Dashboard<br/>Interactive Security Explorer"]
+        J --> L["Groq SOC Analyst<br/>LLM Incident Report Generation"]
+    end
 ```
 
-## Dataset
+## Dataset & Preprocessing
 
-The project uses **CIC-IDS2017**, a network intrusion detection dataset containing benign traffic and several attack categories.
+The system is evaluated on **CIC-IDS2017**, an established benchmark dataset covering realistic background traffic and simulated cyberattacks captured over five consecutive business days.
 
-For this baseline, the original multiclass labels are converted into binary labels:
+### Binary Classification Formulation
 
-- `0` — Benign traffic
+While CIC-IDS2017 includes multiple attack categories (DoS, Web Attacks, Brute Force, Infiltration, Port Scanning, DDoS, and Botnets), this baseline implements binary intrusion detection:
+- **`0` — BENIGN:** Normal background network activity.
+- **`1` — MALICIOUS:** Network flows generated during simulated attack scenarios.
 
-- `1` — Malicious traffic
+### Preprocessing & Data Cleaning
+
+Data preparation follows a strict leakage-free workflow:
+
+1. **Ingestion & Schema Validation:** 8 raw CSV files (2,830,743 flows) are loaded in chunks with stripped headers and schema verification.
+2. **Internal Deduplication:** Duplicate flows within the dataset are identified and removed (308,381 duplicate records dropped).
+3. **Numerical Cleaning:** Infinite values (`+inf`, `-inf`) and non-numeric entries are coerced and discarded (1,564 non-finite rows dropped).
+4. **Stratified Split:** An 80/20 train/test split preserves class distributions without cross-split mixing.
+5. **Feature Filtering:** Zero-variance features are identified exclusively on the training split (8 constant columns removed).
+6. **Feature Normalization:** `StandardScaler` is fitted strictly on training data and applied across both splits.
 
 ### Preprocessing Summary
 
-| Property | Value |
-
-|---|---:|
-
-| Source CSV files | 8 |
-
-| Original network flows | 2,830,743 |
-
-| Duplicate rows removed | 308,381 |
-
-| Rows removed due to invalid features | 1,564 |
-
-| Usable network flows | 2,520,798 |
-
-| Training samples | 2,016,638 |
-
-| Testing samples | 504,160 |
-
-| Input features | 70 |
-
-| Removed zero-variance features | 8 |
-
-| Training/testing split | 80% / 20% |
-
-| Random seed | 42 |
-
-The preprocessing pipeline removes duplicates, handles invalid numerical values, performs a stratified train/test split, removes constant features based on training data, and fits `StandardScaler` using training data only.
+| Pipeline Stage | Flow Count | Notes & Impact |
+| :--- | :---: | :--- |
+| **Raw Ingestion** | 2,830,743 | 8 original CSV files from CIC-IDS2017 |
+| **Duplicates Removed** | -308,381 | Exact within-dataset duplicate records purged |
+| **Invalid Records Dropped** | -1,564 | Rows containing `NaN`, `+inf`, or `-inf` |
+| **Clean Dataset** | **2,520,798** | Cleaned, finite feature vectors |
+| **Training Partition (80%)** | 2,016,638 | Used exclusively for feature selection, scaling, and training |
+| **Testing Partition (20%)** | 504,160 | Held-out stratified random test set |
+| **Retained Features** | **70** | 8 constant features dropped based strictly on train data |
 
 ## Machine Learning Model
 
-The baseline classifier is a **Random Forest** implemented using scikit-learn.
+The baseline classifier is a **Random Forest** built with `scikit-learn`, selected for its strong tabular data performance, resistance to overfitting, and native compatibility with TreeSHAP.
 
 ### Model Configuration
 
-| Parameter | Value |
+| Hyperparameter | Setting | Design Rationale |
+| :--- | :---: | :--- |
+| **Algorithm** | Random Forest | Ensemble of decorrelated decision trees |
+| **Estimators (`n_estimators`)** | 80 | Balances predictive accuracy with low-latency inference |
+| **Max Depth (`max_depth`)** | 16 | Restricts tree complexity to prevent overfitting |
+| **Min Samples Leaf (`min_samples_leaf`)** | 2 | Smooths probability estimates in terminal nodes |
+| **Class Weighting (`class_weight`)** | `'balanced'` | Compensates for natural benign/malicious class imbalance |
+| **Feature Fraction (`max_features`)** | `'sqrt'` | $\approx \sqrt{70} \approx 8$ features considered per split |
+| **Random State (`random_state`)** | 42 | Ensures deterministic reproducibility |
 
-|---|---|
+### In-Distribution Baseline Performance
 
-| Algorithm | Random Forest |
+Evaluated on the 504,160 flows in the stratified random test split:
 
-| Number of trees | 80 |
+| Evaluation Metric | Score | Verified Counts |
+| :--- | :---: | :--- |
+| **Overall Accuracy** | **99.88%** | 503,533 / 504,160 flows correctly classified |
+| **Malicious Precision** | **99.37%** | 85,058 true malicious alerts vs. 537 false alarms |
+| **Malicious Recall** | **99.89%** | 85,058 detected out of 85,148 malicious flows |
+| **Malicious F1-Score** | **99.63%** | Harmonic mean of precision and recall |
+| **Benign Specificity** | **99.87%** | 418,475 detected out of 419,012 benign flows |
 
-| Maximum tree depth | 16 |
+#### Confusion Matrix `[[TN, FP], [FN, TP]]`
 
-| Minimum samples per leaf | 2 |
+| Ground Truth \ Prediction | Predicted Benign (`0`) | Predicted Malicious (`1`) | Total Actual | Performance |
+| :--- | :---: | :---: | :---: | :---: |
+| **Actual Benign (`0`)** | **418,475** (TN) | **537** (FP) | 419,012 | **99.87%** Specificity |
+| **Actual Malicious (`1`)** | **90** (FN) | **85,058** (TP) | 85,148 | **99.89%** Recall |
+| **Total Predicted** | 418,565 | 85,595 | **504,160** | **99.37%** Precision |
 
-| Class weighting | Balanced |
-
-| Maximum features | Square root |
-
-| Random state | 42 |
-
-| Input features | 70 |
-
-### Evaluation Results
-
-The model was evaluated on 504,160 network flows from the stratified random test split.
-
-| Metric | Score |
-
-|---|---:|
-
-| Accuracy | 99.88% |
-
-| Malicious precision | 99.37% |
-
-| Malicious recall | 99.89% |
-
-| Malicious F1-score | 99.63% |
-
-### Confusion Matrix
-
-| Actual / Predicted | Benign | Malicious |
-
-|---|---:|---:|
-
-| Benign | 418,475 | 537 |
-
-| Malicious | 90 | 85,058 |
-
-The model correctly classified 503,533 of the 504,160 test flows.
-
-**Important:** These results describe performance on the saved CIC-IDS2017 random test split. They should not be interpreted as guaranteed performance on real-world networks.
+> **Contextual Note:** These high metrics reflect standard in-distribution testing where test flows share attack sessions with the training set. For performance on unfamiliar, zero-day attack categories, see the [Generalization Evaluation](#generalization-evaluation-held-out-friday-experiment) below.
 
 ## Generalization Evaluation: Held-Out Friday Experiment
 
@@ -209,166 +142,112 @@ For the complete methodology, cross-split duplicate removal, confusion matrices,
 AI-NIDS uses **SHAP (SHapley Additive exPlanations)** to explain individual model predictions.
 
 For a selected network flow, the system identifies influential features and displays:
+- **Feature name:** The measured flow metric (e.g., `Bwd Packet Length Std`, `Average Packet Size`).
+- **Original feature value:** Unscaled physical measurement for domain interpretation.
+- **SHAP contribution:** Exact positive or negative impact on the decision log-odds.
+- **Directional indicator:** Whether the feature supports or opposes the predicted class.
 
-- Feature name
-
-- Original feature value
-
-- SHAP contribution
-
-- Whether the contribution supports or opposes the predicted class
-
-SHAP helps explain the model's behavior. It does not establish that a feature caused an attack.
+> **Interpretation Note:** SHAP explains the internal reasoning of the decision trees. Feature influence does not establish physical attack causality.
 
 ## Groq-Powered SOC Reports
 
 The system integrates Groq to produce AI-assisted security analysis using the model prediction, predicted-class probability, and selected SHAP feature evidence.
 
-Reports are structured around:
+Reports are structured around four core sections:
+1. **Executive Assessment:** High-level summary of the alert confidence.
+2. **Technical Evidence:** Synthesis of influential flow features.
+3. **Caveats & Limitations:** Transparent acknowledgment of model uncertainty.
+4. **Defensive Next Steps:** Practical triage recommendations for SOC tier-1 analysts.
 
-1. Assessment
+**Security Notice:** A machine learning prediction is an investigative signal, not a confirmed security breach. Groq-generated reports must be reviewed by a qualified security analyst.
 
-2. Evidence
-
-3. Limitations
-
-4. Defensive next steps
-
-The reporting instructions discourage unsupported claims about attack types, IP addresses, victims, or indicators of compromise.
-
-**Security note:** A machine learning prediction is not a confirmed security incident. Groq-generated analysis should be reviewed by a human analyst.
-
-The system also supports graceful failure handling. If the API key is missing or the Groq service fails, local SHAP explanations remain available.
+**Resilience:** The application features graceful degradation. If the Groq API key is missing or the external service fails, local SHAP explanations and Streamlit visualizations remain fully operational.
 
 ## Streamlit Dashboard
 
-The interactive dashboard allows users to explore network intrusion predictions and their explanations.
-
-It includes classification results, prediction statistics, SHAP feature information, and optional AI-assisted SOC reports.
+The interactive dashboard allows security teams to explore network intrusion predictions and their explanations:
+- **Batch Evaluation:** Interactive preview of test traffic samples.
+- **Single-Flow Triage:** In-depth probability breakdown and confidence gauge.
+- **Local SHAP Waterfall:** Visual attribution of top features influencing the alert.
+- **SOC Analyst Assistant:** On-demand generation of structured LLM incident summaries.
 
 Run the dashboard locally:
-
 ```bash
-
 streamlit run app.py
-
 ```
-
-The application normally opens at:
-
-`http://localhost:8501`
+The application opens at: `http://localhost:8501`
 
 ## Installation
 
 ### 1. Clone the Repository
-
 ```bash
-
-git clone YOUR_REPOSITORY_URL
-
+git clone https://github.com/SMHC-hub/AI-NIDS.git
 cd AI-NIDS
-
 ```
 
-Replace `YOUR_REPOSITORY_URL` with the actual GitHub repository URL.
-
 ### 2. Create a Virtual Environment
-
 Python 3.11 is recommended.
 
 On Windows PowerShell:
-
 ```powershell
-
 py -3.11 -m venv .venv
-
 .\.venv\Scripts\Activate.ps1
-
 ```
 
 ### 3. Install Dependencies
-
 ```bash
-
 python -m pip install -r requirements.txt
-
 ```
 
 ### 4. Prepare the Dataset
-
-Obtain the CIC-IDS2017 MachineLearningCVE CSV files from an authorized dataset source.
-
-Place the eight CSV files inside:
-
+Obtain the CIC-IDS2017 MachineLearningCVE CSV files from an authorized dataset source. Place the eight CSV files inside:
 ```text
-
 data/raw/CIC-IDS-2017/CSVs/MachineLearningCSV/MachineLearningCVE/
-
 ```
 
 ### 5. Run Preprocessing
-
 ```bash
-
 python preprocess.py
-
 ```
-
 This generates processed training and testing datasets, the feature list, and the fitted scaler.
 
 ### 6. Train the Model
-
 ```bash
-
 python safe_train.py
-
 ```
-
-The training script produces the Random Forest model and evaluation artifacts.
+The training script produces the baseline Random Forest model and evaluation artifacts under an 11.0 GiB RAM guardrail.
 
 ### 7. Configure Groq (Optional)
-
-Create a local `.env` file using `.env.example` as a reference.
-
-Configure the Groq API key and model identifier required by the application.
-
+Create a local `.env` file using `.env.example` as a reference:
+```env
+GROQ_API_KEY=your_actual_groq_api_key_here
+GROQ_MODEL=openai/gpt-oss-120b
+```
 Never commit real API keys or `.env` files to GitHub.
 
 ### 8. Start the Dashboard
-
 ```bash
-
 streamlit run app.py
-
 ```
 
 ## Automated Tests
 
-Run the automated test suite:
-
+Run the automated test suite across baseline and generalization components:
 ```bash
-
-python -m pytest tests/test_ai_nids.py -v
-
+python -m pytest tests/ -v
 ```
 
-The current baseline passes seven tests covering:
+The test suite covers 11 automated test cases:
+- Model artifact availability and schema integrity
+- Feature compatibility across scalers and classifiers
+- Binary prediction and probability calibration bounds
+- Local SHAP waterfall explanation correctness
+- Graceful Groq API missing key and network failure handling
+- Strict day-partition file isolation (zero Monday–Thursday and Friday overlap)
+- Cross-split duplicate flow purging to prevent leakage
+- Train-only feature selection and StandardScaler fitting invariants
 
-- Model artifact availability
-
-- Feature compatibility
-
-- Binary predictions
-
-- Probability validation
-
-- SHAP explanations
-
-- Missing Groq API key handling
-
-- Simulated Groq API failure handling
-
-Latest verified result: **7 passed, 0 failed**.
+Latest verified result: **11 passed, 0 failed**.
 
 ## Project Structure
 
@@ -400,150 +279,74 @@ AI-NIDS/
     └── held_out_day_evaluation.md
 ```
 
-Some directories contain generated artifacts or large datasets that may not be included in the public repository.
-
 ## Limitations
 
 This project is a research and portfolio prototype, not a production-ready intrusion detection system.
-
-Current limitations include:
-
-- **Random flow splitting:** Related network sessions may appear in both training and testing data, potentially inflating evaluation scores.
-
-- **Dataset generalization:** Performance on CIC-IDS2017 does not establish performance on newer attacks or independent networks.
-
-- **Binary classification:** The model predicts benign or malicious traffic but does not reliably identify a specific attack category.
-
-- **False positives and false negatives:** The classifier can incorrectly flag benign traffic or miss malicious flows.
-
-- **SHAP interpretation:** Feature contributions explain model predictions, not attack causality.
-
-- **AI-generated analysis:** Groq reports may contain inaccuracies and require analyst review.
-
-- **Deployment:** The current application is designed for local experimentation and has not been validated as a production network monitoring system.
+- **Random flow splitting:** Standard random test splits share sessions with training data, inflating evaluation scores.
+- **Unseen attack blindspots:** Supervised models struggle with novel attack families (e.g., 0.43% PortScan and 0.00% Botnet recall on Friday).
+- **Binary classification:** The model flags benign vs. malicious traffic but does not identify specific attack categories.
+- **False positives & negatives:** Predictions are probabilistic signals and can incorrectly flag benign activity or miss subtle threats.
+- **Explainability limits:** SHAP identifies influential model features, not physical network causality.
+- **AI-generated text:** Groq LLM reports may hallucinate and must be validated by human security personnel.
+- **Deployment context:** Evaluated offline on simulated data; not validated for real-time in-line packet filtering.
 
 ## Future Improvements
 
-Potential improvements include:
-
-- Evaluation using separate capture days and independent network datasets
-
-- Multiclass attack classification
-
-- Additional model comparisons
-
-- Improved SOC report validation
-
-- Container security hardening and automated deployment
-
-- More comprehensive automated testing
-
-- Better monitoring and reproducibility documentation
+- Multiclass attack classification with uncertainty estimation
+- Semi-supervised and anomaly detection models (Isolation Forests, Autoencoders) for zero-day discovery
+- Decision threshold calibration for optimizing reconnaissance detection
+- Cross-dataset evaluation on modern benchmarks (CSE-CIC-IDS2018, UNSW-NB15)
+- Automated CI/CD testing and container security hardening
 
 ## Technology Stack
 
-**Language:** Python 3.11
-
-**Machine Learning:** scikit-learn, pandas, NumPy
-
-**Explainability:** SHAP
-
-**Generative AI:** Groq API
-
-**Dashboard:** Streamlit
-
-**Testing:** pytest
-
-**Containerization:** Docker
+- **Language:** Python 3.11
+- **Machine Learning:** scikit-learn, pandas, NumPy
+- **Explainability:** SHAP
+- **Generative AI:** Groq API
+- **Dashboard:** Streamlit
+- **Testing:** pytest
+- **Containerization:** Docker
 
 ## Docker Deployment
 
-AI-NIDS supports Docker deployment using Python 3.11 and Streamlit. The container runs the dashboard, Random Forest predictions, SHAP explanations, and optional Groq SOC Analyst reports.
+AI-NIDS supports containerized deployment using Docker:
 
-### Build the Docker Image
-
-From the project root, run:
-
+### Build the Image
 ```powershell
-
 docker build -t ai-nids:1.0 .
-
 ```
 
-### Run the Docker Container
-
-Before starting, ensure the trained model files are available in `models/` and the processed test data is available in `data/processed/`.
-
-Create a local `.env` file using `.env.example` as a reference. Add your own Groq API key. Never commit `.env` to GitHub.
-
-On Windows PowerShell, run:
-
+### Run the Container
 ```powershell
-
 docker run -d `
-
-  --name ai-nids-app `
-
-  -p 8502:8501 `
-
-  --env-file .env `
-
-  --mount "type=bind,source=${PWD}\models,target=/app/models,readonly" `
-
-  --mount "type=bind,source=${PWD}\data\processed,target=/app/data/processed,readonly" `
-
-  ai-nids:1.0
-
+  --name ai-nids-app `
+  -p 8502:8501 `
+  --env-file .env `
+  --mount "type=bind,source=${PWD}\models,target=/app/models,readonly" `
+  --mount "type=bind,source=${PWD}\data\processed,target=/app/data/processed,readonly" `
+  ai-nids:1.0
 ```
+Open the dashboard at: `http://localhost:8502`
 
-Open the dashboard at:
-
-http://localhost:8502
-
-### Verify the Container
-
+### Container Management
 ```powershell
-
+# Verify container status
 docker ps -a --filter "name=ai-nids-app"
 
-```
-
-### Stop and Remove the Container
-
-```powershell
-
+# Stop and remove container
 docker rm -f ai-nids-app
-
 ```
-
-### Deployment Notes
-
-- Docker uses the existing trained model; retraining is not required.
-
-- Models and processed datasets are mounted read-only and are not included in the image.
-
-- Groq is optional and requires an API key supplied at runtime.
-
-- The Docker deployment has been locally tested with Streamlit, Random Forest predictions, SHAP explanations, and Groq reports.
-
-- This deployment is intended for local demonstration and experimentation, not production network monitoring.
 
 ## Project Purpose
 
-AI-NIDS was developed to explore how machine learning, explainable AI, and large language models can work together in cybersecurity.
-
-The goal is not only to classify network traffic but also to make predictions understandable and provide useful evidence for further security investigation.
+AI-NIDS was developed to explore how machine learning, explainable AI, and large language models can work together in cybersecurity. The goal is not only to classify network traffic but also to make predictions understandable and provide actionable evidence for security investigation.
 
 ## Project Credits
 
-**Project:** AI-NIDS — Explainable AI Network Intrusion Detection System
+- **Project:** AI-NIDS — Explainable AI Network Intrusion Detection System
+- **Developed by:** Syed Muhammad Huzaifa Chishty
+- **Role:** Founder & AI Engineer
+- **Organization:** SASH Innoventures
 
-**Developed by:** Syed Muhammad Huzaifa Chishty
-
-**Role:** Founder & AI Engineer
-
-**Organization:** SASH Innoventures
-
-AI-NIDS is an applied AI and cybersecurity project developed as part of the founder's technical portfolio at SASH Innoventures.
-
-The project combines machine learning, explainable AI (SHAP), and LLM-assisted security analysis to demonstrate an interpretable approach to network intrusion detection.
+AI-NIDS is an applied AI and cybersecurity project developed as part of the founder's technical portfolio at SASH Innoventures. The project combines machine learning, explainable AI (SHAP), and LLM-assisted security analysis to demonstrate an interpretable approach to network intrusion detection.
