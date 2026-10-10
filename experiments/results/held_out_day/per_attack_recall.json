@@ -1,0 +1,46 @@
+[
+  {
+    "label": "BENIGN",
+    "category_type": "BENIGN",
+    "seen_in_training": true,
+    "support": 372238,
+    "detected_malicious": 470,
+    "correct_classifications": 371768,
+    "metric_name": "Specificity (Benign Accuracy)",
+    "metric_value": 0.998737,
+    "false_positive_rate": 0.001263
+  },
+  {
+    "label": "Bot",
+    "category_type": "MALICIOUS",
+    "seen_in_training": false,
+    "support": 1948,
+    "detected_malicious": 0,
+    "missed_malicious_fn": 1948,
+    "metric_name": "Detection Recall",
+    "metric_value": 0.0,
+    "false_positive_rate": 0.0
+  },
+  {
+    "label": "DDoS",
+    "category_type": "MALICIOUS",
+    "seen_in_training": false,
+    "support": 128012,
+    "detected_malicious": 80530,
+    "missed_malicious_fn": 47482,
+    "metric_name": "Detection Recall",
+    "metric_value": 0.629082,
+    "false_positive_rate": 0.0
+  },
+  {
+    "label": "PortScan",
+    "category_type": "MALICIOUS",
+    "seen_in_training": false,
+    "support": 90130,
+    "detected_malicious": 387,
+    "missed_malicious_fn": 89743,
+    "metric_name": "Detection Recall",
+    "metric_value": 0.004294,
+    "false_positive_rate": 0.0
+  }
+]

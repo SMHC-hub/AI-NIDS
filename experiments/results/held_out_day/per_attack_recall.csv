@@ -1,0 +1,5 @@
+label,category_type,seen_in_training,support,detected_malicious,correct_classifications,metric_name,metric_value,false_positive_rate,missed_malicious_fn
+BENIGN,BENIGN,True,372238,470,371768.0,Specificity (Benign Accuracy),0.998737,0.001263,
+Bot,MALICIOUS,False,1948,0,,Detection Recall,0.0,0.0,1948.0
+DDoS,MALICIOUS,False,128012,80530,,Detection Recall,0.629082,0.0,47482.0
+PortScan,MALICIOUS,False,90130,387,,Detection Recall,0.004294,0.0,89743.0

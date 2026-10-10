@@ -180,6 +180,30 @@ The model correctly classified 503,533 of the 504,160 test flows.
 
 **Important:** These results describe performance on the saved CIC-IDS2017 random test split. They should not be interpreted as guaranteed performance on real-world networks.
 
+## Generalization Evaluation: Held-Out Friday Experiment
+
+To evaluate how well the Random Forest model generalizes to unseen attack categories and temporal distribution shifts, we performed a separate **held-out-day generalization experiment**.
+
+The model was trained strictly on traffic from **Monday through Thursday** (1,924,938 flows) and evaluated exclusively on traffic from **Friday** (592,328 flows). All Friday attack types (**DDoS**, **PortScan**, and **Bot**) were completely absent from the Monday–Thursday training data.
+
+### Baseline vs. Held-Out Day Comparison
+
+| Metric | Random Split (Baseline) | Held-Out Friday (Generalization) |
+|---|---:|---:|
+| **Accuracy** | 99.88% | 76.42% |
+| **Malicious Precision** | 99.37% | 99.42% |
+| **Malicious Recall** | 99.89% | 36.77% |
+| **Malicious F1-Score** | 99.63% | 53.68% |
+| **Benign Specificity** | 99.87% | 99.87% |
+| **DDoS Recall** | *(in split)* | 62.91% |
+| **PortScan Recall** | *(in split)* | 0.43% |
+| **Bot Recall** | *(in split)* | 0.00% |
+
+**Key Finding:** While benign traffic remained highly stationary (99.87% specificity with only 470 false alarms out of 372,238 flows), malicious recall dropped significantly on unfamiliar attacks. The model partially detected unseen DDoS attacks (62.91%) due to structural similarities with training DoS floods, but missed virtually all unseen PortScan (0.43%) and Botnet (0.00%) traffic. This demonstrates that standard random-split benchmarks can significantly overestimate an intrusion detection system's readiness for zero-day threats.
+
+For the complete methodology, cross-split duplicate removal, confusion matrices, and feature importances, see the full research report:  
+👉 [**AI-NIDS: Evaluating Generalization to Unseen Network Attacks**](docs/held_out_day_evaluation.md)
+
 ## Explainable AI with SHAP
 
 AI-NIDS uses **SHAP (SHapley Additive exPlanations)** to explain individual model predictions.
@@ -365,9 +389,15 @@ AI-NIDS/
 │   ├── raw/
 │   └── processed/
 ├── models/
+├── experiments/
+│   ├── held_out_day.py
+│   ├── safe_run_held_out_day.py
+│   └── results/held_out_day/
 ├── tests/
-│   └── test_ai_nids.py
+│   ├── test_ai_nids.py
+│   └── test_held_out_day.py
 └── docs/
+    └── held_out_day_evaluation.md
 ```
 
 Some directories contain generated artifacts or large datasets that may not be included in the public repository.
