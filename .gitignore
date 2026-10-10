@@ -8,3 +8,5 @@ data/raw/
 data/processed/
 models/
 *.pkl
+# Local backups
+backups/
